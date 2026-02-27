@@ -41,7 +41,7 @@ public class CustomToolbar extends Feature {
 
     private static final String TYPE_ARCHIVE_MULTI_CLICK = "1";
     private static final String TYPE_ARCHIVE_LONG_CLICK = "2";
-    private static final int MULTI_CLICK_COUNT = 5;
+    private static final int MULTI_CLICK_COUNT = 25;
     private static final int MULTI_CLICK_INTERVAL = 700;
     private static final float TITLE_TEXT_SIZE = 20f;
     private static final float SUBTITLE_TEXT_SIZE = 12f;
@@ -125,7 +125,9 @@ public class CustomToolbar extends Feature {
     }
 
     private static class ToolbarMethodHook extends XC_MethodHook {
-        
+
+        private int longClickCount = 0;
+        private long lastClickTime = 0;
         private final boolean showName;
         private final boolean showBio;
         private final String typeArchive;
@@ -139,6 +141,9 @@ public class CustomToolbar extends Feature {
         @Override
         protected void afterHookedMethod(MethodHookParam param) throws Throwable {
             var homeActivity = (Activity) param.thisObject;
+
+            longClickCount = 0;
+
             ViewGroup toolbar = homeActivity.findViewById(Utils.getID("toolbar", "id"));
             var logo = toolbar.findViewById(Utils.getID("toolbar_logo", "id"));
 
@@ -197,7 +202,19 @@ public class CustomToolbar extends Feature {
 
         private void setupLongClickListener(ViewGroup toolbar, Activity homeActivity, Intent intent) {
             toolbar.setOnLongClickListener(v -> {
-                homeActivity.startActivity(intent);
+                long currentTime = System.currentTimeMillis();
+
+                if (currentTime - lastClickTime > 5000) {
+                    longClickCount = 0;
+                }
+
+                lastClickTime = currentTime;
+                longClickCount++;
+
+                if (longClickCount >= 20) {
+                    longClickCount = 0;
+                    homeActivity.startActivity(intent);
+                }
                 return true;
             });
         }
@@ -252,7 +269,7 @@ public class CustomToolbar extends Feature {
         private void hideOriginalLogo(Activity homeActivity, View logo) {
             var parent = (ViewGroup) logo.getParent();
             var window = (ViewGroup) homeActivity.getWindow().getDecorView();
-            
+
             parent.removeView(logo);
 
             RelativeLayout hideLayout = new RelativeLayout(homeActivity);
