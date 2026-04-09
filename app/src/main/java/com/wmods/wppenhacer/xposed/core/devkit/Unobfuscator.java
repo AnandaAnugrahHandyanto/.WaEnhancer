@@ -241,8 +241,14 @@ public class Unobfuscator {
 
             for (var method : methods) {
                 var params = method.getParamTypeNames();
-                if (params.contains(classDeviceJid.getName()) && params.contains(classPhoneUserJid.getName()))
-                    return method.getMethodInstance(classLoader);
+                if (classDeviceJid != null && classPhoneUserJid != null) {
+                    if (params.contains(classDeviceJid.getName()) && params.contains(classPhoneUserJid.getName()))
+                        return method.getMethodInstance(classLoader);
+                } else {
+                    // Fallback: match any receipt method whose params include a jid-related class
+                    if (params.stream().anyMatch(p -> p.contains(".jid.")))
+                        return method.getMethodInstance(classLoader);
+                }
             }
 
             throw new NoSuchMethodError("Receipt method not found");
@@ -780,14 +786,35 @@ public class Unobfuscator {
      */
     public synchronized static Method loadViewOnceDownloadMenuMethod(ClassLoader classLoader) throws Exception {
         return UnobfuscatorCache.getInstance().getMethod(classLoader, () -> {
-            var clazz = XposedHelpers.findClass("com.whatsapp.mediaview.MediaViewFragment", classLoader);
-            var method = Arrays.stream(clazz.getDeclaredMethods()).filter(m -> m.getParameterCount() == 2 &&
-                    Objects.equals(m.getParameterTypes()[0], Menu.class) &&
-                    Objects.equals(m.getParameterTypes()[1], MenuInflater.class) &&
-                    m.getDeclaringClass() == clazz).findFirst();
-            if (!method.isPresent())
-                throw new Exception("ViewOnceDownloadMenu method not found");
-            return method.get();
+            // Try known class names (old and possible new package locations)
+            for (String className : new String[]{
+                    "com.whatsapp.mediaview.MediaViewFragment",
+                    "com.whatsapp.media.view.MediaViewFragment",
+                    "com.whatsapp.mediaview.ui.MediaViewFragment",
+                    "com.whatsapp.media.ui.MediaViewFragment"}) {
+                var clazz = XposedHelpers.findClassIfExists(className, classLoader);
+                if (clazz == null) continue;
+                var method = Arrays.stream(clazz.getDeclaredMethods()).filter(m -> m.getParameterCount() == 2 &&
+                        Objects.equals(m.getParameterTypes()[0], Menu.class) &&
+                        Objects.equals(m.getParameterTypes()[1], MenuInflater.class) &&
+                        m.getDeclaringClass() == clazz).findFirst();
+                if (method.isPresent())
+                    return method.get();
+            }
+            // DexKit fallback: search for any Fragment class declaring onCreateOptionsMenu(Menu, MenuInflater)
+            // that is related to media/view-once viewing
+            var candidates = dexkit.findMethod(FindMethod.create()
+                    .matcher(MethodMatcher.create()
+                            .name("onCreateOptionsMenu")
+                            .paramTypes(Menu.class.getName(), MenuInflater.class.getName())));
+            for (var candidate : candidates) {
+                var declaringClass = candidate.getDeclaredClassName();
+                if (declaringClass.contains("MediaView") || declaringClass.contains("mediaview")
+                        || declaringClass.contains("ViewOnce") || declaringClass.contains("viewonce")) {
+                    return candidate.getMethodInstance(classLoader);
+                }
+            }
+            throw new Exception("ViewOnceDownloadMenu method not found");
         });
     }
 
@@ -1607,9 +1634,19 @@ public class Unobfuscator {
         return UnobfuscatorCache.getInstance().getMethod(loader, () -> {
             var method = dexkit.findMethod(
                     FindMethod.create().matcher(MethodMatcher.create().name("setupUsernameInGroupViewContainer")));
-            if (method.isEmpty())
-                throw new RuntimeException("GroupAdmin method not found");
-            return method.get(0).getMethodInstance(loader);
+            if (!method.isEmpty())
+                return method.get(0).getMethodInstance(loader);
+            // Fallback: find using the log string present in the conversation row setup
+            for (String logString : new String[]{
+                    "ConversationRow/setupUserNameInGroupView",
+                    "setupUserNameInGroupView",
+                    "name_in_group"}) {
+                var fallback = dexkit.findMethod(FindMethod.create()
+                        .matcher(MethodMatcher.create().addUsingString(logString)));
+                if (!fallback.isEmpty())
+                    return fallback.get(0).getMethodInstance(loader);
+            }
+            throw new RuntimeException("GroupAdmin method not found");
         });
     }
 
@@ -1913,11 +1950,17 @@ public class Unobfuscator {
 
     public synchronized static Method loadPlaybackSpeed(ClassLoader classLoader) throws Exception {
         return UnobfuscatorCache.getInstance().getMethod(classLoader, () -> {
-            var method = findFirstMethodUsingStrings(classLoader, StringMatchType.Contains,
-                    "heroaudioplayer/setPlaybackSpeed");
-            if (method == null)
-                throw new RuntimeException("PlaybackSpeed method not found");
-            return method;
+            for (String logString : new String[]{
+                    "heroaudioplayer/setPlaybackSpeed",
+                    "audioplayer/setPlaybackSpeed",
+                    "audioPlayer/setPlaybackSpeed",
+                    "voicenote/setPlaybackSpeed",
+                    "setPlaybackSpeed"}) {
+                var method = findFirstMethodUsingStrings(classLoader, StringMatchType.Contains, logString);
+                if (method != null)
+                    return method;
+            }
+            throw new RuntimeException("PlaybackSpeed method not found");
         });
     }
 
@@ -2254,17 +2297,19 @@ public class Unobfuscator {
 
     public static Method loadMediaQualitySelectionMethod(ClassLoader classLoader) throws Exception {
         return UnobfuscatorCache.getInstance().getMethod(classLoader, () -> {
-            var methodData = dexkit.findMethod(FindMethod.create().matcher(
-                    MethodMatcher.create().addUsingString("enable_media_quality_tool").returnType(boolean.class)));
-
-            if (methodData.isEmpty()) {
-                methodData = dexkit.findMethod(FindMethod.create().matcher(
-                        MethodMatcher.create().addUsingString("show_media_quality_toggle").returnType(boolean.class)));
+            for (String propString : new String[]{
+                    "enable_media_quality_tool",
+                    "show_media_quality_toggle",
+                    "media_quality_hd",
+                    "enable_hd_quality",
+                    "media_quality_selection",
+                    "hd_media_quality"}) {
+                var methodData = dexkit.findMethod(FindMethod.create().matcher(
+                        MethodMatcher.create().addUsingString(propString).returnType(boolean.class)));
+                if (!methodData.isEmpty())
+                    return methodData.get(0).getMethodInstance(classLoader);
             }
-
-            if (methodData.isEmpty())
-                throw new RuntimeException("MediaQualitySelection method not found");
-            return methodData.get(0).getMethodInstance(classLoader);
+            throw new RuntimeException("MediaQualitySelection method not found");
         });
     }
 
