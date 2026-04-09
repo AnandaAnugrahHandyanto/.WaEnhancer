@@ -1,2 +1,2 @@
 [ADDED]
-* Added support for WA/WB 2.26.11.xx
+* Added support for WA/WB 2.26.13.xx
