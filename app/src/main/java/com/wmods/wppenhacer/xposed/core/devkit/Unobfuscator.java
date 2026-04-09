@@ -808,9 +808,8 @@ public class Unobfuscator {
                             .name("onCreateOptionsMenu")
                             .paramTypes(Menu.class.getName(), MenuInflater.class.getName())));
             for (var candidate : candidates) {
-                var declaringClass = candidate.getDeclaredClassName();
-                if (declaringClass.contains("MediaView") || declaringClass.contains("mediaview")
-                        || declaringClass.contains("ViewOnce") || declaringClass.contains("viewonce")) {
+                var declaringClass = candidate.getDeclaredClassName().toLowerCase();
+                if (declaringClass.contains("mediaview") || declaringClass.contains("viewonce")) {
                     return candidate.getMethodInstance(classLoader);
                 }
             }
@@ -1639,8 +1638,7 @@ public class Unobfuscator {
             // Fallback: find using the log string present in the conversation row setup
             for (String logString : new String[]{
                     "ConversationRow/setupUserNameInGroupView",
-                    "setupUserNameInGroupView",
-                    "name_in_group"}) {
+                    "setupUserNameInGroupView"}) {
                 var fallback = dexkit.findMethod(FindMethod.create()
                         .matcher(MethodMatcher.create().addUsingString(logString)));
                 if (!fallback.isEmpty())
@@ -1954,8 +1952,7 @@ public class Unobfuscator {
                     "heroaudioplayer/setPlaybackSpeed",
                     "audioplayer/setPlaybackSpeed",
                     "audioPlayer/setPlaybackSpeed",
-                    "voicenote/setPlaybackSpeed",
-                    "setPlaybackSpeed"}) {
+                    "voicenote/setPlaybackSpeed"}) {
                 var method = findFirstMethodUsingStrings(classLoader, StringMatchType.Contains, logString);
                 if (method != null)
                     return method;
